@@ -1,4 +1,4 @@
-const {createHmac, randomBytes} = require("crypto");
+const { createHmac, randomBytes } = require("crypto");
 const { Schema, model } = require("mongoose");
 
 const userSchema = new Schema(
@@ -14,7 +14,6 @@ const userSchema = new Schema(
     },
     salt: {
       type: String,
-      required: true,
     },
     password: {
       type: String,
@@ -33,22 +32,47 @@ const userSchema = new Schema(
   { timestamps: true }
 );
 
-userSchema.pre("save", function (next){
-    const user = this;
+// Hash the password before saving
+userSchema.pre("save", function (next) {
+  const user = this;
 
-    if(!user.isModified("password")) return;
+  // Only hash the password if it has been modified (or is new)
+  if (!user.isModified("password")) return next();
 
-    const salt = randomBytes(16).toString();
-    const hashedPassword = createHmac("sha256", salt)
+  // Generate a new salt and hash the password
+  const salt = randomBytes(16).toString("hex");
+  const hashedPassword = createHmac("sha256", salt)
     .update(user.password)
     .digest("hex");
 
-    this.salt = salt;
-    this.password = hashedPassword;
+  // Set the salt and hashed password
+  user.salt = salt;
+  user.password = hashedPassword;
 
-    next();
-})
+  next();
+});
 
-const User = model("user", userSchema);
+// Method to match provided password with the hashed password
+userSchema.static("matchPassword", async function (email, password) {
+  const user = await this.findOne({ email });
+  if (!user) throw new Error("User not found!");
+
+  // Hash the provided password using the stored salt
+  const userProvHashed = createHmac("sha256", user.salt)
+    .update(password)
+    .digest("hex");
+
+  // Compare the hashed password with the stored hashed password
+  if (user.password !== userProvHashed) throw new Error("Incorrect Password");
+
+  // Return user data excluding password and salt
+  const userWithoutSensitiveData = user.toObject();
+  delete userWithoutSensitiveData.password;
+  delete userWithoutSensitiveData.salt;
+
+  return userWithoutSensitiveData;
+});
+
+const User = model("User", userSchema);
 
 module.exports = User;
