@@ -33,43 +33,43 @@ const userSchema = new Schema(
   { timestamps: true }
 );
 
-// Hash the password before saving
 userSchema.pre("save", function (next) {
   const user = this;
 
-  // Only hash the password if it has been modified (or is new)
-  if (!user.isModified("password")) return next();
+  if (!user.isModified("password")) return;
 
-  // Generate a new salt and hash the password
-  const salt = randomBytes(16).toString("hex");
+  const salt = randomBytes(16).toString();
   const hashedPassword = createHmac("sha256", salt)
     .update(user.password)
     .digest("hex");
 
-  // Set the salt and hashed password
-  user.salt = salt;
-  user.password = hashedPassword;
+  this.salt = salt;
+  this.password = hashedPassword;
 
   next();
 });
 
-// Method to match provided password with the hashed password
-userSchema.static("matchPasswordAndGenerateToken", async function (email, password) {
-  const user = await this.findOne({ email });
-  if (!user) throw new Error("User not found!");
+userSchema.static(
+  "matchPasswordAndGenerateToken",
+  async function (email, password) {
+    const user = await this.findOne({ email });
+    if (!user) throw new Error("User not found!");
 
-  const userProvHashed = createHmac("sha256", user.salt)
-    .update(password)
-    .digest("hex");
+    const salt = user.salt;
+    const hashedPassword = user.password;
 
-  if (user.password !== userProvHashed) throw new Error("Incorrect Password");
+    const userProvidedHash = createHmac("sha256", salt)
+      .update(password)
+      .digest("hex");
 
+    if (hashedPassword !== userProvidedHash)
+      throw new Error("Incorrect Password");
 
-  const token = createTokenForUser(user);
- 
-  return token;
-});
+    const token = createTokenForUser(user);
+    return token;
+  }
+);
 
-const User = model("User", userSchema);
+const User = model("user", userSchema);
 
 module.exports = User;
